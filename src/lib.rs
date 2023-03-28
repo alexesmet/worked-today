@@ -55,7 +55,7 @@ fn test_for_report_period(line_type: &ReportLineType, date_a: NaiveDate, date_b:
     match line_type {
         ReportLineType::Day => date_a == date_b,
         ReportLineType::Week => date_a.week(Weekday::Mon).first_day() == date_b.week(Weekday::Mon).first_day(),
-        ReportLineType::Month => date_a.month() == date_b.month(),
+        ReportLineType::Month => date_a.month() == date_b.month() && date_a.year() == date_b.year(),
     }
 }
 
