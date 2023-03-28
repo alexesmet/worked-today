@@ -1,9 +1,14 @@
+use std::collections::HashMap;
 use std::fs::File;
 use std::io::{self, BufReader, BufRead};
+use std::ops::AddAssign;
+use std::path::PathBuf;
 
 use chrono::{NaiveDate, Datelike, Weekday};
 use serde::Deserialize;
 use num_traits::FromPrimitive;
+
+static EXPECTED_PER_DAY: f64 = 8.0;
 
 pub enum TimesheetParseError {
     IOError(io::Error),
@@ -30,20 +35,22 @@ impl TimesheetRecord {
     }
 }
 
-#[derive(Clone,Debug)]
+#[derive(Clone, Copy, Debug)]
+#[derive(Eq, Hash, PartialEq)]
 pub enum ReportLineType { Day, Week, Month }
 
 //private
 struct ReportLineData {
     line_type: ReportLineType,
-    hours: f64
+    hours: f64,
 }
 
 #[derive(Debug)]
 pub struct ReportLine {
-    hours: f64,
-    label: String,
-    line_type: ReportLineType
+    pub hours: f64,
+    pub expected: f64,
+    pub label: String,
+    pub line_type: ReportLineType,
 }
 
 fn test_for_report_period(line_type: &ReportLineType, date_a: NaiveDate, date_b: NaiveDate) -> bool {
@@ -56,13 +63,23 @@ fn test_for_report_period(line_type: &ReportLineType, date_a: NaiveDate, date_b:
 
 fn generate_report_label_for_date(line_type: &ReportLineType, date: NaiveDate) -> String {
     match line_type {
-        ReportLineType::Day => date.to_string(),
-        ReportLineType::Week => date.iso_week().week().to_string(),
+        ReportLineType::Day => format!("{:?} {:?}", date, date.weekday()),
+        ReportLineType::Week => format!("Week #{}", date.iso_week().week()),
         ReportLineType::Month => chrono::Month::from_u32(date.month()).unwrap().name().to_string(),
     }
 }
 
-pub fn generate_report(filename: Option<&str>) -> Result<Vec<ReportLine>, TimesheetParseError> {
+fn push_result_for_next_period(result_to_push: &mut Vec<ReportLine>, data: &mut ReportLineData, current_day: NaiveDate, expected_hours: f64) {
+    result_to_push.push(ReportLine {
+        hours: data.hours,
+        expected: expected_hours,
+        label: generate_report_label_for_date(&data.line_type, current_day),
+        line_type: data.line_type,
+    });
+    data.hours = 0.0;
+}
+
+pub fn generate_report(filename: Option<PathBuf>) -> Result<Vec<ReportLine>, TimesheetParseError> {
 
     let stdin = io::stdin();
     let handle = stdin.lock();
@@ -71,7 +88,6 @@ pub fn generate_report(filename: Option<&str>) -> Result<Vec<ReportLine>, Timesh
             .map_err(TimesheetParseError::IOError)?)),
         None => Box::new(handle),
     };
-
 
     let mut report_priority = [
         ReportLineData {
@@ -87,10 +103,18 @@ pub fn generate_report(filename: Option<&str>) -> Result<Vec<ReportLine>, Timesh
             hours: 0.0
         },
     ];
+
+    let mut accumulated_expected_hours: HashMap<ReportLineType, f64> = HashMap::new();
     
     let mut opt_current_date = None;
     let mut result = Vec::new();
     let mut rdr = csv::Reader::from_reader(buffered);
+
+    for each in report_priority.iter() {
+        accumulated_expected_hours.insert(each.line_type, EXPECTED_PER_DAY);
+    }
+
+    
     for des in rdr.deserialize() {
         let record: TimesheetStringRecord = des.map_err(TimesheetParseError::CSVError)?;
         let record = TimesheetRecord::from_string_record(record).map_err(TimesheetParseError::DateError)?;
@@ -99,14 +123,18 @@ pub fn generate_report(filename: Option<&str>) -> Result<Vec<ReportLine>, Timesh
 
         for each in report_priority.iter_mut() {
             if !test_for_report_period(&each.line_type, *current_day, record.date) {
-                result.push(ReportLine {
-                    hours: each.hours,
-                    label: generate_report_label_for_date(&each.line_type, *current_day),
-                    line_type: each.line_type.clone()
-                });
-                each.hours = 0.0;
+                push_result_for_next_period(&mut result, each, *current_day, accumulated_expected_hours.remove(&each.line_type).unwrap());
             }
             each.hours += record.hours;
+        }
+
+        if *current_day != record.date {
+            for each in report_priority.iter() {
+                accumulated_expected_hours
+                    .entry(each.line_type)
+                    .or_insert(0.0)
+                    .add_assign(EXPECTED_PER_DAY);
+            }
         }
 
         opt_current_date = Some(record.date);
@@ -115,11 +143,7 @@ pub fn generate_report(filename: Option<&str>) -> Result<Vec<ReportLine>, Timesh
 
     if let Some(last_day) = opt_current_date {
         for each in report_priority.iter_mut() {
-            result.push(ReportLine {
-                hours: each.hours,
-                label: generate_report_label_for_date(&each.line_type, last_day),
-                line_type: each.line_type.clone()
-            });
+            push_result_for_next_period(&mut result, each, last_day, accumulated_expected_hours.remove(&each.line_type).unwrap());
         }
     }
 

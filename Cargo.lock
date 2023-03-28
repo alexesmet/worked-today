@@ -663,4 +663,5 @@ dependencies = [
  "csv",
  "num-traits",
  "serde",
+ "termcolor",
 ]
