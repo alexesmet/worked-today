@@ -16,7 +16,7 @@ fn main() {
     };
     let mut stdout = StandardStream::stdout(choice);
     
-    match lib::generate_report(opts.filename) {
+    match lib::generate_report(opts.filename, opts.expected) {
         Ok(report) => {
             for line in report {
                 match output::print_report_line(&mut stdout, &line) {

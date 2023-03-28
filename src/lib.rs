@@ -8,8 +8,6 @@ use chrono::{NaiveDate, Datelike, Weekday};
 use serde::Deserialize;
 use num_traits::FromPrimitive;
 
-static EXPECTED_PER_DAY: f64 = 8.0;
-
 pub enum TimesheetParseError {
     IOError(io::Error),
     CSVError(csv::Error),
@@ -31,7 +29,7 @@ struct TimesheetRecord {
 impl TimesheetRecord {
     fn from_string_record(record: TimesheetStringRecord) -> Result<TimesheetRecord, chrono::ParseError> {
         let date = NaiveDate::parse_from_str(&record.date, "%Y-%m-%d")?;
-        return Ok(TimesheetRecord { date, hours: record.hours }); 
+        Ok(TimesheetRecord { date, hours: record.hours })
     }
 }
 
@@ -79,7 +77,7 @@ fn push_result_for_next_period(result_to_push: &mut Vec<ReportLine>, data: &mut 
     data.hours = 0.0;
 }
 
-pub fn generate_report(filename: Option<PathBuf>) -> Result<Vec<ReportLine>, TimesheetParseError> {
+pub fn generate_report(filename: Option<PathBuf>, expected_per_day: f64) -> Result<Vec<ReportLine>, TimesheetParseError> {
 
     let stdin = io::stdin();
     let handle = stdin.lock();
@@ -111,7 +109,7 @@ pub fn generate_report(filename: Option<PathBuf>) -> Result<Vec<ReportLine>, Tim
     let mut rdr = csv::Reader::from_reader(buffered);
 
     for each in report_priority.iter() {
-        accumulated_expected_hours.insert(each.line_type, EXPECTED_PER_DAY);
+        accumulated_expected_hours.insert(each.line_type, expected_per_day);
     }
 
     
@@ -133,7 +131,7 @@ pub fn generate_report(filename: Option<PathBuf>) -> Result<Vec<ReportLine>, Tim
                 accumulated_expected_hours
                     .entry(each.line_type)
                     .or_insert(0.0)
-                    .add_assign(EXPECTED_PER_DAY);
+                    .add_assign(expected_per_day);
             }
         }
 
@@ -147,7 +145,7 @@ pub fn generate_report(filename: Option<PathBuf>) -> Result<Vec<ReportLine>, Tim
         }
     }
 
-    return Ok(result);
+    Ok(result)
 }
 
 

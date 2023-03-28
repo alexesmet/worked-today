@@ -31,5 +31,8 @@ pub struct Options {
     /// path to file to read
     pub filename: Option<PathBuf>,
     #[arg(long, default_value_t = Color::Auto)]
-    pub color: Color
+    pub color: Color,
+    /// how much hours per day you are expected to work
+    #[arg(long, default_value_t = 8.0)]
+    pub expected: f64
 }
